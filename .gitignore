@@ -218,3 +218,15 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Input/Output Folders
+input/
+output/
+
+# Experiments Folder
+experiments/
+.idea/
+
+# Apontamentos pessoais
+apontamentos.md
+Apontamentos.txt
