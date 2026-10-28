@@ -53,6 +53,10 @@ one shot-to-shot value with:
 
 The final choice is validated empirically in Section 5.1 (2×2 comparison).
 
+![Middle vs Uniform keyframes](number1_number2/images/t5_compare_shot0_dev_01.png)
+
+*Figure 1 — Shot 0 of `dev_01` represented by `middle` (left, 1 frame) and `uniform K=3` (right, 3 frames). The uniform strategy samples the shot across its visual phases; the middle strategy captures only the central state. The K-sweep in 5.1 measures whether the extra coverage translates into better discrimination.*
+
 **Implementation validation.** Two families of tests were run before
 integrating the function into the pipeline:
 
@@ -120,6 +124,10 @@ much better HSV is compared to RGB, in this situation:
 | dev_02 | **HSV** | 0.8724 | 0.5862 | **0.2862** |
 | dev_02 | RGB | 0.9323 | 0.7688 | 0.1636 |
 
+![Histogram similarity example](number1_number2/images/t6_hist_example_dev_01.png)
+
+*Figure 2 — Colour similarity of two keyframes from the same scene (`dev_01`, scene `S00`). Top: the two keyframes. Bottom: the marginal distributions of H, S and V.*
+
 **Decision.** We adopt **HSV with `8³`**. It is the only combination that
 (i) keeps the discrimination gap near its maximum on both development
 videos and (ii) is computationally cheaper.
@@ -143,6 +151,10 @@ inverted layouts may share an almost identical histogram.
    integer. This is why the aggregator `max` is
    mandatory for SIFT, as `mean`/`vote` would need prior normalisation to
    `[0, 1]`.
+
+![SIFT matches example](number1_number2/images/t6_sift_matches_dev_01.png)
+
+*Figure 3 — SIFT matches between two keyframes from the same scene (`dev_01`, scene `S00`) after Lowe's ratio test. Lines connect descriptor correspondences; the number of surviving matches (11) is the similarity metric used by `sift_similarity`.*
 
 **Parameter choices:** `nfeatures=500` and `ratio=0.75`. Both justified
 empirically in **8.4**.
