@@ -249,7 +249,7 @@ geometric filtering could further clean up SIFT matches.
 same three keyframes used in 4.2.2 (`nfeatures=500`, `ratio=0.75`):
 
 | transform | DOF | 
-|---|---|---|
+|---|---|
 | `none` (baseline) | — |
 | `translation` | 2 | 
 | `similarity` | 4 |
