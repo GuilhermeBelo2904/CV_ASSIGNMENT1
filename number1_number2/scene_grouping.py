@@ -7,15 +7,16 @@ Groups ground-truth shots into recurring scenes by:
 """
 import cv2 as cv
 import numpy as np
+import grouping
 
 # ═══════════════════════════════════════════════════════════════
 # 1. CONFIG — Every tunable parameter
 # ═══════════════════════════════════════════════════════════════
 
 DEFAULT_CONFIG = {
-    "method":      "hist",          # "hist" | "sift"
-    "kf_strategy": "middle",        # "middle" | "uniform"
-    "K":           3,               # keyframes per shot
+    "method":      "hist",          # "hist" | "sift" | "combined"
+    "kf_strategy": "uniform",        # "middle" | "uniform"
+    "K":           5,               # keyframes per shot
     "aggregator":  "max",           # "max" | "mean" | "vote"
     "bins": (8, 8, 8),              # HSV 3D hist
     "lowe_ratio":  0.75,
@@ -23,7 +24,7 @@ DEFAULT_CONFIG = {
     "use_ransac":   False,
     "transform":    "homography",   # "translation" | "similarity" | "affine" | "homography"
     "combined_alpha": 0.5,
-    "threshold":   0.5,             # grouping threshold
+    "threshold":   0.87,             # grouping threshold
 }
 
 # ═══════════════════════════════════════════════════════════════
@@ -111,12 +112,12 @@ class SIFTMatcher:
 
     _instances = {}
 
-    def __init__(self, nfeatures=200):
+    def __init__(self, nfeatures=500):
         self.nfeatures = nfeatures
         self._sift = cv.SIFT_create(nfeatures=nfeatures)
 
     @classmethod
-    def get(cls, nfeatures=200):
+    def get(cls, nfeatures=500):
         """Return a cached SIFTMatcher for these parameters."""
         if nfeatures not in cls._instances:
             cls._instances[nfeatures] = cls(nfeatures)
@@ -161,7 +162,6 @@ class SIFTMatcher:
             _, mask = cv.estimateAffinePartial2D(src, dst, method=cv.RANSAC,
                                                   ransacReprojThreshold=reproj)
         elif transform == "translation":
-            # no OpenCV RANSAC for 2-DOF — median of displacements (robust estimator)
             dx = dst[:, 0] - src[:, 0]
             dy = dst[:, 1] - src[:, 1]
             tx, ty = np.median(dx), np.median(dy)
@@ -187,14 +187,18 @@ def sift_similarity(kf1, kf2, ratio=0.75, nfeatures=500,
     )
 
 def combined_similarity(kf1, kf2, alpha=0.5, bins=(8, 8, 8),
-                        ratio=0.75, nfeatures=500):
+                        ratio=0.75, nfeatures=500,
+                        use_ransac=False, transform="homography",
+                        kp_des1=None, kp_des2=None):
     """Weighted combination of color and SIFT similarities, in [0, 1]."""
-    h = histogram_similarity(kf1, kf2, bins=bins)
+    h = histogram_similarity(kf1, kf2, bins=bins) if alpha > 0 else 0.0
+    if alpha >= 1.0:
+        return float(h)
 
     matcher = SIFTMatcher.get(nfeatures)
-    kp1, des1 = matcher.detect(kf1)
-    kp2, des2 = matcher.detect(kf2)
-    s = matcher.match_count(kp1, des1, kp2, des2, ratio)
+    kp1, des1 = kp_des1 if kp_des1 is not None else matcher.detect(kf1)
+    kp2, des2 = kp_des2 if kp_des2 is not None else matcher.detect(kf2)
+    s = matcher.match_count(kp1, des1, kp2, des2, ratio, use_ransac, transform)
 
     n_min = min(len(kp1), len(kp2))
     s_norm = s / n_min if n_min > 0 else 0.0
@@ -205,12 +209,92 @@ def combined_similarity(kf1, kf2, alpha=0.5, bins=(8, 8, 8),
 # 4. Build Matrix
 # ═══════════════════════════════════════════════════════════════
 
+def _pairwise_keyframe_similarities(kfs_a, kfs_b, sift_a, sift_b, cfg):
+    """Return the list of pairwise similarities between two shots' keyframes."""
+    method = cfg["method"]
+    bins = cfg["bins"]
+    ratio = cfg["lowe_ratio"]
+    use_ransac = cfg["use_ransac"]
+    transform = cfg["transform"]
+    alpha = cfg["combined_alpha"]
+
+    if method in ("hist", "lab", "rgb"):
+        sim_fn = {
+            "hist": histogram_similarity,
+            "lab": lab_similarity,
+            "rgb": rgb_similarity,
+        }[method]
+        return [sim_fn(kfa, kfb, bins=bins) for kfa in kfs_a for kfb in kfs_b]
+
+    # sift / combined: reuse the pre-detected descriptors
+    matcher = SIFTMatcher.get(cfg["nfeatures"])
+    values = []
+    for idx_a, kfa in enumerate(kfs_a):
+        kp_a, des_a = sift_a[idx_a]
+        for idx_b, kfb in enumerate(kfs_b):
+            kp_b, des_b = sift_b[idx_b]
+            if method == "sift":
+                s = matcher.match_count(kp_a, des_a, kp_b, des_b,
+                                        ratio, use_ransac, transform)
+                values.append(float(s))
+            else:  # combined
+                values.append(combined_similarity(
+                    kfa, kfb,
+                    alpha=alpha, bins=bins, ratio=ratio,
+                    nfeatures=cfg["nfeatures"],
+                    use_ransac=use_ransac, transform=transform,
+                    kp_des1=(kp_a, des_a), kp_des2=(kp_b, des_b),
+                ))
+    return values
+
+
 def build_similarity_matrix(frames, shots, config=None):
-    ...
+    """Compute the shot x shot similarity matrix."""
+    cfg = {**DEFAULT_CONFIG, **(config or {})}
+    n = len(shots)
+    if n == 0:
+        return np.zeros((0, 0), dtype=np.float32)
+
+    method = cfg["method"]
+    if method not in ("hist", "lab", "rgb", "sift", "combined"):
+        raise ValueError(f"Unknown method: {method!r}")
+
+    kfs_per_shot = [
+        extract_keyframes(frames, shot, cfg["kf_strategy"], K=cfg["K"])
+        for shot in shots
+    ]
+
+    sift_kp_des = None
+    if method in ("sift", "combined"):
+        matcher = SIFTMatcher.get(cfg["nfeatures"])
+        sift_kp_des = [
+            [matcher.detect(kf) for kf in kfs]
+            for kfs in kfs_per_shot
+        ]
+
+    sim = np.zeros((n, n), dtype=np.float32)
+    for i in range(n):
+        sim[i, i] = 1.0
+        for j in range(i + 1, n):
+            pair_values = _pairwise_keyframe_similarities(
+                kfs_per_shot[i], kfs_per_shot[j],
+                sift_kp_des[i] if sift_kp_des else None,
+                sift_kp_des[j] if sift_kp_des else None,
+                cfg,
+            )
+            v = aggregate_similarities(pair_values, cfg["aggregator"])
+            sim[i, j] = v
+            sim[j, i] = v
+    return sim
+
 
 # ═══════════════════════════════════════════════════════════════
 # 5. Entry Point
 # ═══════════════════════════════════════════════════════════════
 
 def scenes_from_shots(frames, gt_shots, config=None):
-    ...
+    """Group the given shots into recurring scenes."""
+    cfg = {**DEFAULT_CONFIG, **(config or {})}
+    sim = build_similarity_matrix(frames, gt_shots, cfg)
+    labels = grouping.group_shots(sim, cfg["threshold"])
+    return {str(s["id"]): int(l) for s, l in zip(gt_shots, labels)}

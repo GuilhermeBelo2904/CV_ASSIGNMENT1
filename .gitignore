@@ -224,9 +224,6 @@ input/
 output/
 
 # Experiments Folder
-experiments/
+/experiments/
 .idea/
 
-# Apontamentos pessoais
-apontamentos.md
-Apontamentos.txt
