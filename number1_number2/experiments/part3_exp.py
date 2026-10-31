@@ -521,6 +521,43 @@ def table_threshold_plateau(force_recompute=False):
     _save_cache("threshold_plateau", {"md": md})
     return md
 
+def table_dev_scene_metrics(force_recompute=False):
+    """5.4 scene grouping metrics on dev_01, dev_02 and DEV total."""
+    c = None if force_recompute else _load_cache("dev_scene_metrics")
+    if c: return c["md"]
+
+    per_video = []
+    for video in ("dev_01", "dev_02"):
+        gt, frames = _video(video)
+        gt_shots = gt["shots"]
+        sim = sg.build_similarity_matrix(frames, gt_shots, sg.DEFAULT_CONFIG)
+        labels = grouping.group_shots(sim, sg.DEFAULT_CONFIG["threshold"])
+        gt_map = {str(s["id"]): s["scene"] for s in gt_shots}
+        pred_map = {str(s["id"]): int(l) for s, l in zip(gt_shots, labels)}
+        tp, fp, fn = metrics.pairwise_scene_counts(gt_map, pred_map)
+        n_pred = len(set(labels))
+        n_gt = len(set(gt_map.values()))
+        per_video.append((video, n_pred, n_gt, tp, fp, fn))
+
+    tp_t = sum(x[3] for x in per_video)
+    fp_t = sum(x[4] for x in per_video)
+    fn_t = sum(x[5] for x in per_video)
+
+    def _row(name, n_pred, n_gt, tp, fp, fn):
+        p, r, f1 = metrics.precision_recall_f1(tp, fp, fn)
+        return [name, f"{n_pred} / {n_gt}",
+                f"{p:.3f}", f"{r:.3f}", f"{f1:.3f}"]
+
+    rows = [_row(v, np_, ng_, tp, fp, fn)
+            for v, np_, ng_, tp, fp, fn in per_video]
+    n_pred_dev = sum(x[1] for x in per_video)
+    n_gt_dev = sum(x[2] for x in per_video)
+    rows.append(_row("DEV", n_pred_dev, n_gt_dev, tp_t, fp_t, fn_t))
+
+    md = _md_table(
+        ["Video", "Scenes (pred / GT)", "Scene-P", "Scene-R", "Scene-F1"], rows)
+    _save_cache("dev_scene_metrics", {"md": md})
+    return md
 
 # ═══════════════════════════════════════════════════════════════════
 # Convenience: regenerate everything
@@ -543,4 +580,5 @@ def run_all(force_recompute=False):
         "ransac_matrix":       table_ransac_matrix(force_recompute),
         "two_by_two":          table_2x2(force_recompute),
         "threshold":           table_threshold_plateau(force_recompute),
+        "dev_scene_metrics":   table_dev_scene_metrics(force_recompute)
     }
