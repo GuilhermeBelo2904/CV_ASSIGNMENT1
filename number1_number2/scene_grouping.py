@@ -18,13 +18,13 @@ DEFAULT_CONFIG = {
     "kf_strategy": "uniform",        # "middle" | "uniform"
     "K":           5,               # keyframes per shot
     "aggregator":  "max",           # "max" | "mean" | "vote"
-    "bins": (8, 8, 8),              # HSV 3D hist
+    "bins": (8, 8, 8),             
     "lowe_ratio":  0.75,
     "nfeatures":   500,
     "use_ransac":   False,
     "transform":    "homography",   # "translation" | "similarity" | "affine" | "homography"
     "combined_alpha": 0.5,
-    "threshold":   0.87,             # grouping threshold
+    "threshold":   0.87,          
 }
 
 # ═══════════════════════════════════════════════════════════════
@@ -226,7 +226,6 @@ def _pairwise_keyframe_similarities(kfs_a, kfs_b, sift_a, sift_b, cfg):
         }[method]
         return [sim_fn(kfa, kfb, bins=bins) for kfa in kfs_a for kfb in kfs_b]
 
-    # sift / combined: reuse the pre-detected descriptors
     matcher = SIFTMatcher.get(cfg["nfeatures"])
     values = []
     for idx_a, kfa in enumerate(kfs_a):
@@ -237,7 +236,7 @@ def _pairwise_keyframe_similarities(kfs_a, kfs_b, sift_a, sift_b, cfg):
                 s = matcher.match_count(kp_a, des_a, kp_b, des_b,
                                         ratio, use_ransac, transform)
                 values.append(float(s))
-            else:  # combined
+            else:  
                 values.append(combined_similarity(
                     kfa, kfb,
                     alpha=alpha, bins=bins, ratio=ratio,
