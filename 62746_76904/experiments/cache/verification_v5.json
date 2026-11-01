@@ -1,0 +1,3 @@
+{
+  "md": "| Set | Verification | cut-P | cut-R | cut-F1 | flash-FA |\n|---|---|---|---|---|---|\n| DEV | without | 0.841 | 0.986 | 0.908 | 12/12 |\n| DEV | with | 0.972 | 0.986 | 0.979 | 1/12 |\n| TEST | without | 0.826 | 0.974 | 0.894 | 12/12 |\n| TEST | with | 0.987 | 0.962 | 0.974 | 1/12 |"
+}
