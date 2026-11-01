@@ -135,7 +135,7 @@ def table_bins_single(force_recompute=False):
 
 
 def table_colour_space_single(include_lab=True, force_recompute=False):
-    """4.2.1 (HSV vs RGB) and §8.2 (HSV vs Lab vs RGB + means)."""
+    """4.2.1 (HSV vs RGB) and 8.2 (HSV vs Lab vs RGB + means)."""
     key = "colour_single_lab" if include_lab else "colour_single"
     c = None if force_recompute else _load_cache(key)
     if c: return c["md"]
@@ -268,7 +268,7 @@ def table_ransac_single(force_recompute=False):
 
 
 def table_alpha_single(force_recompute=False):
-    """8.1 — alpha gap on a single keyframe pair."""
+    """8.1 alpha gap on a single keyframe pair."""
     c = None if force_recompute else _load_cache("alpha_single")
     if c: return c["md"]
     alphas = [0.0, 0.25, 0.50, 0.75, 1.00]
@@ -387,7 +387,7 @@ def table_colour_space_matrix(force_recompute=False):
 
 
 def table_bins_matrix(force_recompute=False):
-    """§5.1.5 — bin resolution on the matrix (two sub-tables)."""
+    """5.1.5 bin resolution on the matrix (two sub-tables)."""
     def _label(b):
         if len(set(b)) == 1:
             return f"{b[0]}³"
